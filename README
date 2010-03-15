@@ -1,0 +1,25 @@
+check_domain is a simple nagios-compatible checker script that checks delegations from domains
+the domain to be checked is given as parameter, please note that you need to add a trailing dot to the domain, else you might find yourself in endlessly recursing the Domain Name System
+
+Currently it does:
+ 1) recurse from a.root-servers.net to the next-upper Nameserver from the given domain
+ 2) ask Nameservers resulting from step #1 about who they think is nameserver and compare the sets
+ 3) compare SOAs from Nameserver from step #2
+
+Example output:
+
+$ ./check_domain ukeer.de.
+ukeer.de.: delegation ok; NS-Set->(dns3.noris.net.->(194.31.2.65, 2010030401), dns2.noris.net.->(192.109.102.65, 2010030401), dns1.noris.net.->(213.95.0.65, 2010030401))
+
+$ ./check_domain yahoo.com.
+Server ns1.yahoo.com. has different view of NS-Set than root
+
+As you can see, ukeer.de is regarded okay, while yahoo.com is not (yahoo.com has less nameservers in the TLD Level listed than in their nameservers self)
+
+
+NOTE
+====
+
+the script is called like  ./check_domain domain.
+in case i didnt mention that:  THE TRAILING DOT IS REQUIRED.
+
