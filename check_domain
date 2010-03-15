@@ -1,0 +1,175 @@
+#! /usr/bin/ruby
+
+#
+#
+# ACHTUNG. ARGV[0] muss einen abschliessenden punkt enthalten.
+# ATTENTION: ARGV[0] HAS TO HAVE a TRAILING DOT.
+#
+#
+
+# weitere tests:
+# 20.in-addr.arpa (SERVFAIL)
+# 35.30.195.in-addr.arpa (Timeout)
+# 136.97.194.in-addr.arpa (?)
+# 66.25.217.in-addr.arpa
+# 136.97.194.in-addr.arpa (ns set)
+
+require 'rubygems'
+require 'net/dns/resolver'
+
+module CheckDomain
+	class Error
+		def self.error(code, text)
+			puts text
+			exit code
+		end
+	end
+	class Domain
+		def initialize(domain)
+			@domain  = domain
+			@root_ns = Hash.new
+			@self_ns = Hash.new
+			@soa     = Hash.new
+		end
+
+		def find_root_ns
+			resolver = CheckDomain::Resolver.new
+			@root_ns = resolver.find_ns(@domain)
+			@root_ns.each do |name, ip|
+				if ip == nil
+					@root_ns[name.downcase] = resolver.get_a(name.downcase)
+				end
+			end
+		end
+
+		def find_ns
+			resolver = CheckDomain::Resolver.new
+			@root_ns.each do |name, ip|
+				@self_ns[name.downcase] = resolver.get_ns(@domain, ip)
+			end
+		end
+
+		def find_soa
+			resolver = CheckDomain::Resolver.new
+			@root_ns.each do |name, ip|
+				@soa[name.downcase] = resolver.get_soa(@domain, ip)
+			end
+		end
+
+		def check_ns
+			@self_ns.each do |serv, val|
+				val.each do |name, ip|
+					if ip != nil && @root_ns[name] != ip
+						 #puts "Comparison failed: #{serv}: #{name}/#{ip} != #{@root_ns[name].to_s}\n"
+						 #p self
+						CheckDomain::Error.error(2, "Server #{serv} has different view of NS-Set than root\n")
+					end
+				end
+			end
+		end
+
+		def check_soa
+			main_ser = @soa.first[1].split(/ /)[2]
+			@soa.each do |serv, val|
+				ser = val.split(/ /)[2]
+				if ser != main_ser
+					CheckDomain::Error.error(2, "Server #{serv} disagrees on SOA (#{ser} vs #{main_ser})\n")
+				end
+			end
+		end
+	end
+
+	class Resolver
+		def initialize
+			@a_root = "198.41.0.4"
+			@rec    = "194.8.57.8"
+
+			@resolver = Net::DNS::Resolver.new(:nameserver => @a_root)
+			@recursor = Net::DNS::Resolver.new(:nameserver => @rec)
+		end
+
+		def get_a(label)
+			packet = @recursor.query(label, "A")
+			packet.answer.first.to_a[4]
+		end
+
+		def get_ns(domain, ns)
+			ergebnis = Hash.new
+			result = resolve(domain, "NS", ns)
+			if result.header.rCode.type == "ServFail"
+				CheckDomain::Error.error(2, "Error: #{ns} sent ServFail for #{domain} although delegated (Lame Server)\n")
+			end
+			result.answer.each do |aa|
+				if aa.to_a[3] == "NS"
+					ergebnis[aa.to_a[4].downcase] = nil
+				end
+			end
+			result.additional.each do |ad|
+				if ad.to_a[3] == "A"
+					ergebnis[ad.to_a[0].downcase] = ad.to_a[4]
+				end
+			end
+			return ergebnis
+		end
+
+		def get_soa(domain, ns)
+			ergebnis = Hash.new
+			result = resolve(domain, "SOA", ns)
+			return result.answer.first.to_a[4].downcase
+		end
+
+		def find_ns(domain)
+			ergebnis = Hash.new
+			result = resolve(domain, "NS", @a_root)
+			result.authority.each do |aa|
+				if aa.to_a[3] == "NS"
+					ergebnis[aa.to_a[4].downcase] = nil
+				end
+			end
+			result.additional.each do |ad|
+				if ad.to_a[3] == "A"
+					ergebnis[ad.to_a[0].downcase] = ad.to_a[4]
+				end
+			end
+			return ergebnis
+		end
+
+		def reset
+			@resolver.nameserver = @a_root
+		end
+
+		def resolve(domain, type, nameserver)
+			# puts "#{domain} 4 #{nameserver}\n"
+			@resolver.nameserver = nameserver
+			result = @resolver.query(domain, type)
+			# p result
+			if result.header.rCode.type == "NXDomain"
+				CheckDomain::Error.error(1, "#{domain} does not exist at #{nameserver}")
+			end
+			if result.authority.first.to_a[0] == domain || result.answer.first.to_a[0]
+				return result
+			else
+				# p result.additional.first.to_a[4]
+				if (result.additional.first.to_a[4] == nil)
+					result = resolve(domain, type, get_a(result.authority.first.to_a[4]))
+				else
+					result = resolve(domain, type, result.additional.first.to_a[4])
+				end
+				return result
+			end
+		end
+	end
+end
+
+
+domain = CheckDomain::Domain.new(ARGV[0])
+domain.find_root_ns
+domain.find_ns
+domain.find_soa
+
+##
+domain.check_ns
+
+## 
+puts "ok"
+exit 0
