@@ -3,7 +3,7 @@ the domain to be checked is given as parameter, please note that you need to add
 
 Currently it does:
  1) recurse from a.root-servers.net to the next-upper Nameserver from the given domain
- 2) ask Nameservers resulting from step #1 about who they think is nameserver and compare the sets
+ 2) ask Nameservers resulting from step #1 about who they think is nameserver and compare the sets with the set in step #1
  3) compare SOAs from Nameserver from step #2
 
 Example output:
@@ -23,3 +23,9 @@ NOTE
 the script is called like  ./check_domain domain.
 in case i didnt mention that:  THE TRAILING DOT IS REQUIRED.
 
+
+Requirements
+============
+
+gem install net-dns
+(maybe) gem install rcov
