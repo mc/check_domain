@@ -32,6 +32,13 @@ module CheckDomain
 			@soa     = Hash.new
 		end
 
+		def root_ns
+			return @root_ns
+		end
+		def soa
+			return @soa
+		end
+
 		def find_root_ns
 			resolver = CheckDomain::Resolver.new
 			@root_ns = resolver.find_ns(@domain)
@@ -162,14 +169,34 @@ module CheckDomain
 end
 
 
-domain = CheckDomain::Domain.new(ARGV[0])
-domain.find_root_ns
-domain.find_ns
-domain.find_soa
+begin
+	domain = CheckDomain::Domain.new(ARGV[0])
+	domain.find_root_ns
+	domain.find_ns
+	domain.find_soa
 
-##
-domain.check_ns
+	##
+	domain.check_ns
 
-## 
-puts "ok"
-exit 0
+	## 
+	soa = Hash.new
+	domain.soa.each do |s, v|
+		soa[s] = v.split(/ /)[2].to_s
+	end
+	soa_str = soa.inspect
+	nsset = domain.root_ns.inspect
+
+	output = Array.new
+	domain.root_ns.each do | s, ip |
+		output.push("#{s}->(#{ip}, #{soa[s]})")
+	end
+
+	puts ARGV[0] + ": delegation ok; NS-Set->(" + output.join(", ").to_s + ")\n"
+	exit 0
+
+rescue
+	puts "Unknown error.  Something raised exception\n"
+	exit 1
+end
+
+
